@@ -1,41 +1,83 @@
-# TwinMind - Live Suggestions Assignment
+# TwinMind - Live Suggestions
 
-Web app that captures live mic audio, transcribes in short rolling chunks (configurable), generates exactly 3 live suggestions, and supports detailed chat answers on suggestion click.
+Live meeting copilot app built for the TwinMind assignment.
+It captures mic audio, transcribes continuously, generates exactly 3 live suggestions per batch, and expands suggestions into detailed chat answers.
 
-## Stack
+## Assignment Coverage
+
+### Mic + transcript
+
+- `Start/Stop mic` implemented.
+- Transcript appends as rolling chunks while recording.
+- Transcript auto-scrolls to newest entry.
+- Current default transcript cadence is `8s` (configurable in Settings, range `3-20s`).
+
+### Live suggestions
+
+- Suggestions auto-refresh while recording on adaptive cadence (`15-30s` by default, configurable).
+- Manual `Reload suggestions` button flushes latest audio chunk first, then regenerates suggestions.
+- Each batch is enforced to exactly `3` suggestions.
+- Newest batch appears at top; older batches stay visible.
+- Suggestion types are mixed by context using:
+  - `question_to_ask`
+  - `talking_point`
+  - `answer`
+  - `fact_check`
+  - `clarification`
+
+### Chat panel
+
+- Clicking a suggestion adds it to chat and requests detailed answer.
+- Users can type direct questions in same continuous session chat.
+- Assistant responses are streamed.
+
+### Export
+
+- Export button downloads full session JSON including timestamps:
+  - transcript
+  - every suggestion batch
+  - full chat history
+  - settings snapshot (API key is redacted)
+
+### Models + API key requirements
+
+- Groq used for all inference calls.
+- Transcription default model: `whisper-large-v3`.
+- Suggestions default model: `openai/gpt-oss-120b`.
+- Chat default model: `openai/gpt-oss-120b`.
+- User-pasted Groq API key in Settings; no hardcoded key.
+
+### Settings requirements
+
+- Settings modal opens via button.
+- Editable prompts:
+  - live suggestions prompt
+  - detailed answer prompt
+  - chat prompt
+- Editable model + context + cadence parameters.
+- Defaults are hardcoded in `src/app/defaults.js`; runtime edits are applied immediately after Save.
+
+## Tech Stack
 
 - Frontend: React + Vite
 - Backend: Node.js + Express
-- Models (Groq only):
-  - Transcription: `whisper-large-v3`
-  - Suggestions: `gpt-oss-120b`
-  - Chat: `gpt-oss-120b` (streamed)
+- Speech: Groq `whisper-large-v3`
+- LLM: Groq `openai/gpt-oss-120b`
 
-## Features Implemented
+## Runtime Flow
 
-- Start/stop microphone recording.
-- Transcript chunk append in configurable intervals (default 8s).
-- Auto-refresh suggestions every 15-30s (configurable).
-- Manual refresh button that flushes latest audio chunk, updates transcript, then regenerates suggestions.
-- Exactly 3 suggestions per batch.
-- Newest suggestion batch appears at top; older batches remain visible.
-- Suggestion click adds user item to chat and streams a detailed answer.
-- Direct user chat input in one continuous session chat.
-- Settings modal:
-  - Groq API key
-  - Prompt editing (suggestions, detailed click answer, chat)
-  - Model names
-  - Context windows
-  - Novelty/semantic controls
-  - Temperatures
-  - Refresh interval
-- Export full session as JSON:
-  - Transcript chunks with timestamps
-  - All suggestion batches with timestamps
-  - Full chat history with timestamps
-  - Redacted API key in settings snapshot
+1. Browser captures mic stream via `MediaRecorder` in short segments.
+2. Client normalizes audio (WAV conversion fallback) and sends chunk to `/api/transcribe`.
+3. Transcript lines are appended/stitched in UI.
+4. Suggestion pipeline runs on auto/manual cadence:
+   - builds context window + rolling memory + policy hints
+   - calls `/api/suggestions`
+   - validates strict JSON and exactly 3 suggestions
+   - applies novelty and type-mix guard
+5. Suggestion click or user question sends chat request to `/api/chat/stream`.
+6. Export produces full session JSON.
 
-## Project Structure
+## Key Files
 
 ```txt
 server/
@@ -51,93 +93,61 @@ src/
   app/
     App.jsx
     defaults.js
+  hooks/
+    useRecorder.js
+    useMeetingPipeline.js
+    useChatEngine.js
+  services/
+    apiClient.js
+    promptBuilder.js
+    suggestionIntelligence.js
+    exportSession.js
   components/
-    layout/
     transcript/
     suggestions/
     chat/
     settings/
-  hooks/
-    useRecorder.js
-    useAutoScroll.js
-  services/
-    apiClient.js
-    promptBuilder.js
-    exportSession.js
-  utils/
-    time.js
-    ids.js
 ```
 
-## Prompt Strategy
+## Default Parameters (Hardcoded)
 
-### Live Suggestions
+Defined in `src/app/defaults.js`.
 
-- System prompt enforces:
-  - exactly 3 suggestions
-  - allowed types (`question_to_ask`, `talking_point`, `answer`, `fact_check`, `clarification`)
-  - useful preview text (short and actionable)
-  - a short `why` explanation for timing relevance
-- Context passed:
-  - recent transcript window (`suggestionContextChunks`)
-  - rolling meeting memory summary
-  - phase/policy guidance (opening/exploration/decision/closing)
-  - recent suggestion batch history to reduce repetition
-- Backend enforces strict JSON parsing in single-call mode.
-
-### Detailed Answer (Suggestion Click)
-
-- Separate prompt tuned for longer-form practical guidance.
-- Context passed:
-  - clicked suggestion
-  - wider transcript window (`detailContextChunks`)
-  - recent chat history (`chatContextMessages`)
-- Response is streamed to reduce time-to-first-token.
-
-### Direct Chat
-
-- Separate chat prompt for concise, practical responses.
-- Uses recent transcript and recent chat context.
+- `transcriptIntervalSec`: `8`
+- `suggestionIntervalMinSec`: `15`
+- `suggestionIntervalMaxSec`: `30`
+- `realtimeRefreshMinGapSec`: `15`
+- `suggestionContextChunks`: `4`
+- `suggestionContextMaxAgeSec`: `90`
+- `memoryContextChunks`: `36`
+- `semanticWindowChunks`: `14`
+- `semanticChangeThreshold`: `0.30`
+- `noveltyHistoryBatches`: `8`
 
 ## Setup
 
-1. Install dependencies:
-
 ```bash
 npm install
-```
-
-2. Run frontend + backend:
-
-```bash
 npm run dev
 ```
 
-3. Open app:
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8787`
 
-- `http://localhost:5173`
-
-4. In Settings:
-
-- Paste your Groq API key
-- Keep defaults or tune prompts/settings
-- Save
-
-## Production Build
+## Build + Start
 
 ```bash
 npm run build
 npm start
 ```
 
-Server starts on `http://localhost:8787`.
-
 ## Deployment Notes
 
-Any platform works (Vercel, Render, Replit, Netlify + server host) if both frontend and backend are deployed and `/api/*` routes are reachable by the frontend.
+- Deploy frontend + backend so `/api/transcribe`, `/api/suggestions`, `/api/chat/stream` are reachable from the frontend.
+- Vercel deployment is supported; ensure server routes are available in deployed environment.
 
 ## Known Tradeoffs
 
-- Uses browser `MediaRecorder` with `audio/webm` output for broad compatibility.
-- Suggestion generation is refresh-based (every interval) rather than per-token transcript streaming.
-- Session data is intentionally in-memory only (no persistence after reload).
+- Session state is in-memory only (no persistence across page reload).
+- Suggestion generation is chunk/cadence based, not token-by-token live ASR.
+- Free-tier Groq limits can throttle suggestion/chat calls during long runs; app shows rate-limit feedback and cooldown behavior.

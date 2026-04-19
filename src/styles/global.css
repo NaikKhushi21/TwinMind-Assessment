@@ -166,6 +166,7 @@ body {
 .transcript-list p {
   margin: 0 0 10px;
   line-height: 1.42;
+  color: var(--text);
   animation: item-enter 0.22s ease both;
 }
 
@@ -341,6 +342,24 @@ button:disabled {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.38;
+  color: var(--text);
+}
+
+.chat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-content-line {
+  margin: 0;
+  white-space: normal;
+  line-height: 1.44;
+}
+
+.chat-section-title {
+  font-weight: 700;
+  color: #f1f5ff;
 }
 
 .chat-meta {
